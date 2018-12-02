@@ -19,14 +19,14 @@ class BayesNet:
     def variables(self) -> List[str]:
         return list(self.parents.keys())
 
-    def prob(self, var_name: str, parent_values: tuple) -> float:
+    def pcond(self, var_name: str, parent_values: tuple) -> float:
         raise NotImplementedError
 
     def log_prob(self, sample: Dict[str, int]) -> float:
         logprob = 0
         for var_name, parents in self.parents.items():
             parent_values = tuple(sample[p] for p in parents)
-            prob = self.prob(var_name, parent_values)
+            prob = self.pcond(var_name, parent_values)
             if sample[var_name] == 0:
                 prob = 1 - prob
             logprob += np.log(prob)
@@ -41,7 +41,7 @@ class BayesNet:
                 parents = self.parents[var_name]
                 if all(p in values for p in parents):
                     parent_values = tuple(values[p] for p in parents)
-                    prob = self.prob(var_name, parent_values)
+                    prob = self.pcond(var_name, parent_values)
                     values[var_name] = int(np.random.sample() <= prob)
                 else:
                     new_vars.append(var_name)
@@ -53,7 +53,7 @@ class BayesNet:
         for var_name, parents in self.parents.items():
             line = var_name + " ; " + " ".join(parents)
             for parent_values in product(*([[0, 1]] * len(parents))):
-                line += f" {self.prob(var_name, parent_values):.2f}"
+                line += f" {self.pcond(var_name, parent_values):.2f}"
 
             all_lines += line + "\n"
         return all_lines
@@ -71,14 +71,14 @@ class ParametricBayesNet(BayesNet):
         for values in product(*([[0, 1]] * len(parents))):
             var_scores[tuple(values)] = np.random.randn()
 
-    def prob(self, var_name: str, parent_values: tuple) -> float:
+    def pcond(self, var_name: str, parent_values: tuple) -> float:
         return 1. / (1. + np.exp(-self.scores[var_name][parent_values]))
 
     def learn(self, sample: Dict[str, int],
               learning_rate: float = 1e-3) -> None:
         for var_name, parents in self.parents.items():
             parent_values = tuple(sample[p] for p in parents)
-            prob = self.prob(var_name, parent_values)
+            prob = self.pcond(var_name, parent_values)
             grad = sample[var_name] - prob
             self.scores[var_name][parent_values] += learning_rate * grad
 
@@ -97,7 +97,7 @@ class TableBayesNet(BayesNet):
             prob: float) -> None:
         self.cpds[var_name][parent_values] = prob
 
-    def prob(self, var_name: str, parent_values: tuple) -> float:
+    def pcond(self, var_name: str, parent_values: tuple) -> float:
         return self.cpds[var_name][parent_values]
 
 
