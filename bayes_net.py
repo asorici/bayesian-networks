@@ -77,10 +77,10 @@ class ParametricBayesNet(BayesNet):
     def learn(self, sample: Dict[str, int],
               learning_rate: float = 1e-3) -> None:
         for var_name, parents in self.parents.items():
-            key = tuple(sample[p] for p in parents)
-            score = self.scores[var_name][key]
-            grad = sample[var_name] - (1 / (1 + np.exp(-score)))
-            self.scores[var_name][key] += learning_rate * grad
+            parent_values = tuple(sample[p] for p in parents)
+            prob = self.prob(var_name, parent_values)
+            grad = sample[var_name] - prob
+            self.scores[var_name][parent_values] += learning_rate * grad
 
 
 class TableBayesNet(BayesNet):
