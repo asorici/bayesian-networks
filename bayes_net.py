@@ -32,9 +32,10 @@ class BayesNet:
             logprob += np.log(prob)
         return logprob
 
-    def sample(self) -> Dict[str, int]:
-        values = {}  # type: Dict[str, int]
-        left_vars = self.variables()
+    def sample(self, values: Dict[str, int] = None) -> Dict[str, int]:
+        if values is None:
+            values = dict({})
+        left_vars = [v for v in self.variables() if v not in values]
         while left_vars:
             new_vars = []
             for var_name in left_vars:
@@ -80,15 +81,6 @@ class ParametricBayesNet(BayesNet):
             prob = self.pcond(var_name, parent_values)
             grad = sample[var_name] - prob
             self.scores[var_name][parent_values] += learning_rate * grad
-
-    def learn_po(self, sample: Dict[str, int], learning_rate: float) -> None:
-        for var_name, value in sample.items():
-            parents = self.parents[var_name]
-            domains = [[sample[p]] if p in sample else [0, 1] for p in parents]
-            for parent_values in product(*domains):
-                prob = self.pcond(var_name, parent_values)
-                grad = value - prob
-                self.scores[var_name][parent_values] += learning_rate * grad
 
 
 class TableBayesNet(BayesNet):
@@ -169,7 +161,7 @@ def get_args() -> Namespace:
                             help="Input file")
     arg_parser.add_argument("-n", "--nsteps",
                             type=int,
-                            default=300000,
+                            default=100000,
                             dest="nsteps",
                             help="Number of optimization steps")
     arg_parser.add_argument("--lr",
@@ -177,11 +169,6 @@ def get_args() -> Namespace:
                             default=.005,
                             dest="lr",
                             help="Learning rate")
-    arg_parser.add_argument("--o",
-                            type=float,
-                            default=.25,
-                            dest="observability",
-                            help="Observability")
 
     return arg_parser.parse_args()
 
@@ -196,22 +183,15 @@ def main():
     print(parametric_bn)
 
     ref_cent = cross_entropy(table_bn, table_bn)
-    cent = cross_entropy(table_bn, parametric_bn, nsamples=100)
+    cent = cross_entropy(table_bn, parametric_bn, nsamples=300)
     print(f"Step {0:6d} | CE: {cent:6.3f} / {ref_cent:6.3f}")
 
     for step in range(1, args.nsteps + 1):
-        sample = table_bn.sample()
-        if args.observability < 1:
-            observation = dict({})
-            for var_name, value in sample.items():
-                if np.random.sample() < args.observability:
-                    observation[var_name] = value
-            parametric_bn.learn_po(observation, learning_rate=args.lr)
-        else:
-            parametric_bn.learn(observation, learning_rate=args.lr)
+        observation = table_bn.sample()
+        parametric_bn.learn(observation, learning_rate=args.lr)
 
         if step % 500 == 0:
-            cent = cross_entropy(table_bn, parametric_bn, nsamples=200)
+            cent = cross_entropy(table_bn, parametric_bn, nsamples=300)
             print(f"Step {step:6d} | CE: {cent:6.3f} / {ref_cent:6.3f}")
 
     print("Final params:")
@@ -219,6 +199,19 @@ def main():
 
     print("Reference network:")
     print(table_bn)
+
+
+def write_samples():
+    args = get_args()
+    table_bn = read_cpd_bn(args.file_name)
+
+    with open("samples_" + args.file_name, "w") as handler:
+        variables = table_bn.variables()
+        handler.write(" ".join(variables) + "\n")
+        for i in range(10000):
+            sample = table_bn.sample()
+            values = [sample[var_name] for var_name in variables]
+            handler.write(" ".join([str(x) for x in values]) + "\n")
 
 
 if __name__ == "__main__":
